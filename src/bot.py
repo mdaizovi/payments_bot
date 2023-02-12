@@ -45,45 +45,18 @@ PAYMENT_PROVIDER_TOKEN = STRIPE_TOKEN
 async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays info on how to use the bot."""
     msg = (
-        "Use /newevent to make a new event, /pay to pay for this event"
+        "Use /chat_id to get the id of this chat to use as event id, /link to make a link to pay for this event"
     )
     await update.message.reply_text(msg)
-
-
-async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(f"If you need support please contact {ADMIN_USERNAME}")
 
 async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = f"This chat id is {update.message.chat.id}"
     await update.message.reply_text(msg)
 
-async def new_event(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Get example sheet, duplicate contents, make new sheet with example data. tell user id.
-    #Problem: won't copy format, just contents.
-    repository = EventRepository()
-    example_spreadsheet = repository.spreadsheet.worksheet(EXAMPLE_SHEET_NAME)
-    contents = example_spreadsheet.get_all_values()
-    print("contents")
-    print(contents)
-    chat_id = update.message.chat_id
-    event_sheet = repository.db.create_spreadsheet(chat_id)
-    #Something like this, not exactly this, this is an example.
-    # event_sheet.batch_update([
-    #             {
-    #                 'range': 'A1:J1', # head
-    #                 'values': [['a', 'b', 'c']],
-    #             },
-    #             {
-    #                 'range': 'A2', # values
-    #                 'values': df_array 
-    #             }
-    #         ])
-
 async def share_spreadsheet_with_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.message.chat_id
     repository = EventRepository(chat_id)
     user = update.message.from_user
-    #print('You talk with user {} and his user ID: {} '.format(user['username'], user['id']))
     if user['username'] == ADMIN_USERNAME:
         sheet_input=SPREADSHEET_NAME
         input_mex = update.message.text
@@ -94,22 +67,18 @@ async def share_spreadsheet_with_admin(update: Update, context: ContextTypes.DEF
     await update.message.reply_text(msg)
 
 
-async def pay_for_event(
+async def create_link(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     chat_id = update.message.chat_id
     repository = EventRepository(chat_id)
+    user = update.message.from_user
+    if user['username'] != ADMIN_USERNAME:
+        msg = f"Sorry link can only be made by the Admin user {ADMIN_USERNAME}"
+        await update.message.reply_text(msg)
+        return
+    
     event_name = repository.get_event_display_name()
-    if repository.event_is_full():
-        msg = f"I'm sorry, {event_name} is currently full. Feel free to try again later, in case of cancellation"
-        await update.message.reply_text(msg)
-        return
-    if not repository.event_is_for_sale():
-        dt = repository._get_event_start_sale_datetime()
-        msg = f"I'm sorry, {event_name} is not for sale until {dt.strftime('%m.%d.%Y')} at {dt.strftime('%H:%M')}"
-        await update.message.reply_text(msg)
-        return
-
     title = event_name
     description = f"Sign up for {event_name}"
     # select a payload just for you to recognize its the donation from your bot
@@ -117,18 +86,15 @@ async def pay_for_event(
     currency = "EUR"
     price = repository.get_event_price_int()
     prices = [LabeledPrice("Admission", price)]
-    await context.bot.send_invoice(
-        chat_id, title, description, payload, PAYMENT_PROVIDER_TOKEN, currency, prices,
+    link = await context.bot.create_invoice_link(
+        title=title, description=description, payload=payload, provider_token=PAYMENT_PROVIDER_TOKEN, 
+        currency=currency, prices=prices,
         need_name=True, need_email=True, need_shipping_address=False,
         send_phone_number_to_provider=True,
         send_email_to_provider=True
-    )
-    # delete initial /pay message
-    await context.bot.delete_message(chat_id=update.message.chat_id,
-               message_id=update.message.message_id,)
+        )
+    await update.message.reply_text(link)
 
-
-# after (optional) shipping, it's the pre-checkout
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Answers the PreQecheckoutQuery"""
     query = update.pre_checkout_query
@@ -138,6 +104,16 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if payload["bot_key"] != SECRET_BOT_KEY:
         # answer False pre_checkout_query
         await query.answer(ok=False, error_message="Something went wrong...")
+    chat_id = payload["chat_id"]
+    repository = EventRepository(chat_id)
+    event_name = repository.get_event_display_name()
+    if repository.event_is_full():
+        msg = f"I'm sorry, {event_name} is currently full. Feel free to try again later, in case of cancellation"
+        await query.answer(ok=False, error_message=msg)
+    if not repository.event_is_for_sale():
+        dt = repository._get_event_start_sale_datetime()
+        msg = f"I'm sorry, {event_name} is not for sale until {dt.strftime('%m.%d.%Y')} at {dt.strftime('%H:%M')}"
+        await query.answer(ok=False, error_message=msg)
     else:
         await query.answer(ok=True)
 
@@ -149,8 +125,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     payload = json.loads(receipt.invoice_payload)
     chat_id = payload["chat_id"]
     repository = EventRepository(chat_id)
-    print("receipt")
-    print(receipt)
+    event_name = repository.get_event_display_name()
     payload_value_list = [
                 receipt.order_info.name,
                 update.message.chat.username,
@@ -162,7 +137,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
                 receipt.telegram_payment_charge_id
                 ]
     repository.add_participant(payload_value_list)
-    await update.message.reply_text("Thank you for signing up for {}")
+    await update.message.reply_text(f"Thank you for signing up for {event_name}")
 
 
 def main() -> None:
@@ -174,12 +149,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_callback))
 
     application.add_handler(CommandHandler("chat_id", get_chat_id))
-    application.add_handler(CommandHandler("pay", pay_for_event))
     application.add_handler(CommandHandler("sharesheet", share_spreadsheet_with_admin))
-    application.add_handler(CommandHandler("new", new_event))
-
-    #how to do unknown text in this version?
-    #application.add_handler(MessageHandler(Filters.text, unknown_text))
+    application.add_handler(CommandHandler("link", create_link))
 
     # Pre-checkout handler to final check
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))

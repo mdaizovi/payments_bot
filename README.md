@@ -42,7 +42,7 @@ From here, `words that looks like this` are commands you are meant to type somew
 ### Set up Google Docs "Database":
 
 - Follow [these instructions](https://towardsdatascience.com/turn-google-sheets-into-your-own-database-with-python-4aa0b4360ce7) to set up the Google Sheets API
-- Put the `gs_credentials.json` in the `src/creds` directory of this directory, but DO NOT PUT IT ON GITHUB that file has secrets no one should see.
+- Put the `gs_credentials.json` in the `src/creds` directory of this directory, but DO NOT PUT IT ON GITHUB that file has secrets no one should see. `.gitignore` is already set up to ignore it.
 
 - Copy [this google sheet](https://docs.google.com/spreadsheets/d/1F_5xXnd_YYUlAuT_UHWWSSmYiYxvSmJTaN2pSen9cO4/edit?usp=sharing)
 - Change the name of the google sheet from `Telegram Bookings Backend EXAMPLE` to `Telegram Bookings Backend`
@@ -65,7 +65,7 @@ From here, `words that looks like this` are commands you are meant to type somew
 
 ### Set up Bot Event:
 
-- You can use your first chat for your first event. Every time you create an event you will create a new chat for it, invie your bot to the chat, get the chat id, and name the google sheet aftr the chat. You can use this first chat for your first event, and invite potential participants to it after you do the basic setup.
+- You can use your first chat for your first event. Every time you create an event you will create a new chat for it, invite your bot to the chat, get the chat id, and name the google sheet after the chat. You can use this first chat for your first event, and invite potential participants to it after you do the basic setup.
 
   - Basic Setup:
 
@@ -73,8 +73,14 @@ From here, `words that looks like this` are commands you are meant to type somew
       type this in your chat with the bot:
       `/chat_id`
       It should start with a `-`.
-      Go to your google sheet. Duplicate the example sheet ("TEMPLATE duplicate me!") and give it the name of the chat_id, including the "-". example, "-631113103".
+      Go to your google sheet. Duplicate the example sheet ("TEMPLATE duplicate me!") and give it the name of the chat_id, including the "-". example, "-631113103". If it doesn't work, make sure you didn't add spaces before or after the - and numbers.
 
     - Fill out the google sheet with your event details. Only the green boxes.
 
-    - Invite potetial participants to your chat. They can initiate payment process with the command `/pay`
+    - In your chat with the bot, use `/link` command to generate a payment link for your event.
+
+    ![image](src/img/example.jpg)
+
+    - Delete your administrative messages such as getting chat id, and invite potential participants to your chat.
+      After the Start Selling day/time passes, they can sign up for event by paying with the link you created.
+      After successful payment, their details will automatially be added to the PARTICIPANTS section of the google sheet for the event.
