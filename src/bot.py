@@ -6,9 +6,10 @@
 
 import logging
 import datetime
+import json
 from telegram import __version__ as TG_VER
 
-from settings import ADMIN_USERNAME, TELEGRAM_BOT_TOKEN, STRIPE_TOKEN, CUSTOM_PAYLOAD, SPREADSHEET_NAME
+from settings import ADMIN_USERNAME, TELEGRAM_BOT_TOKEN, STRIPE_TOKEN, SECRET_BOT_KEY, SPREADSHEET_NAME,EXAMPLE_SHEET_NAME
 from repository import EventRepository
 
 try:
@@ -29,7 +30,6 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     PreCheckoutQueryHandler,
-    ShippingQueryHandler,
     filters,
 )
 
@@ -45,44 +45,10 @@ PAYMENT_PROVIDER_TOKEN = STRIPE_TOKEN
 async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays info on how to use the bot."""
     msg = (
-        "Use /shipping to get an invoice for shipping-payment, or /noshipping for an "
-        "invoice without shipping."
+        "Use /newevent to make a new event, /pay to pay for this event"
     )
-
     await update.message.reply_text(msg)
 
-
-async def start_with_shipping_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Sends an invoice with shipping-payment."""
-    chat_id = update.message.chat_id
-    title = "Payment Example"
-    description = "Payment Example using python-telegram-bot"
-    # select a payload just for you to recognize its the donation from your bot
-    payload = CUSTOM_PAYLOAD
-    # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
-    currency = "EUR"
-    # price in euros
-    price = 1
-    # price * 100 so as to include 2 decimal points
-    # check https://core.telegram.org/bots/payments#supported-currencies for more details
-    prices = [LabeledPrice("Test", price * 100)]
-
-    # optionally pass need_name=True, need_phone_number=True,
-    # need_email=True, need_shipping_address=True, is_flexible=True
-    await context.bot.send_invoice(
-        chat_id,
-        title,
-        description,
-        payload,
-        PAYMENT_PROVIDER_TOKEN,
-        currency,
-        prices,
-        need_name=True,
-        need_phone_number=False,
-        need_email=True,
-        need_shipping_address=False,
-        is_flexible=True,
-    )
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"If you need support please contact {ADMIN_USERNAME}")
@@ -91,8 +57,31 @@ async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     msg = f"This chat id is {update.message.chat.id}"
     await update.message.reply_text(msg)
 
-async def share_spreadsheet_with_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def new_event(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Get example sheet, duplicate contents, make new sheet with example data. tell user id.
+    #Problem: won't copy format, just contents.
     repository = EventRepository()
+    example_spreadsheet = repository.spreadsheet.worksheet(EXAMPLE_SHEET_NAME)
+    contents = example_spreadsheet.get_all_values()
+    print("contents")
+    print(contents)
+    chat_id = update.message.chat_id
+    event_sheet = repository.db.create_spreadsheet(chat_id)
+    #Something like this, not exactly this, this is an example.
+    # event_sheet.batch_update([
+    #             {
+    #                 'range': 'A1:J1', # head
+    #                 'values': [['a', 'b', 'c']],
+    #             },
+    #             {
+    #                 'range': 'A2', # values
+    #                 'values': df_array 
+    #             }
+    #         ])
+
+async def share_spreadsheet_with_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.message.chat_id
+    repository = EventRepository(chat_id)
     user = update.message.from_user
     #print('You talk with user {} and his user ID: {} '.format(user['username'], user['id']))
     if user['username'] == ADMIN_USERNAME:
@@ -105,43 +94,26 @@ async def share_spreadsheet_with_admin(update: Update, context: ContextTypes.DEF
     await update.message.reply_text(msg)
 
 
-async def start_without_shipping_callback(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    """Sends an invoice without shipping-payment."""
-    chat_id = update.message.chat_id
-    title = "Payment Example"
-    description = "Payment Example using python-telegram-bot"
-    # select a payload just for you to recognize its the donation from your bot
-    payload = CUSTOM_PAYLOAD
-    # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
-    currency = "EUR"
-    price = 1
-    # price * 100 so as to include 2 decimal points
-    prices = [LabeledPrice("Test", price * 100)]
-
-    # optionally pass need_name=True, need_phone_number=True,
-    # need_email=True, need_shipping_address=True, is_flexible=True
-    await context.bot.send_invoice(
-        chat_id, title, description, payload, PAYMENT_PROVIDER_TOKEN, currency, prices
-    )
-
 async def pay_for_event(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    repository = EventRepository()
     chat_id = update.message.chat_id
-    repository.get_event_by_sheet_name(name=str(chat_id))
+    repository = EventRepository(chat_id)
     event_name = repository.get_event_display_name()
     if repository.event_is_full():
         msg = f"I'm sorry, {event_name} is currently full. Feel free to try again later, in case of cancellation"
+        await update.message.reply_text(msg)
+        return
+    if not repository.event_is_for_sale():
+        dt = repository._get_event_start_sale_datetime()
+        msg = f"I'm sorry, {event_name} is not for sale until {dt.strftime('%m.%d.%Y')} at {dt.strftime('%H:%M')}"
         await update.message.reply_text(msg)
         return
 
     title = event_name
     description = f"Sign up for {event_name}"
     # select a payload just for you to recognize its the donation from your bot
-    payload = CUSTOM_PAYLOAD
+    payload = json.dumps({"chat_id":chat_id, "bot_key": SECRET_BOT_KEY})
     currency = "EUR"
     price = repository.get_event_price_int()
     prices = [LabeledPrice("Admission", price)]
@@ -151,22 +123,9 @@ async def pay_for_event(
         send_phone_number_to_provider=True,
         send_email_to_provider=True
     )
-
-async def shipping_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Answers the ShippingQuery with ShippingOptions"""
-    query = update.shipping_query
-    # check the payload, is this from your bot?
-    if query.invoice_payload != CUSTOM_PAYLOAD:
-        # answer False pre_checkout_query
-        await query.answer(ok=False, error_message="Something went wrong...")
-        return
-
-    # First option has a single LabeledPrice
-    options = [ShippingOption("1", "Shipping Option A", [LabeledPrice("A", 100)])]
-    # second option has an array of LabeledPrice objects
-    price_list = [LabeledPrice("B1", 150), LabeledPrice("B2", 200)]
-    options.append(ShippingOption("2", "Shipping Option B", price_list))
-    await query.answer(ok=True, shipping_options=options)
+    # delete initial /pay message
+    await context.bot.delete_message(chat_id=update.message.chat_id,
+               message_id=update.message.message_id,)
 
 
 # after (optional) shipping, it's the pre-checkout
@@ -174,8 +133,9 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     """Answers the PreQecheckoutQuery"""
     query = update.pre_checkout_query
     print(query)
+    payload = json.loads(query.invoice_payload)
     # check the payload, is this from your bot?
-    if query.invoice_payload != CUSTOM_PAYLOAD:
+    if payload["bot_key"] != SECRET_BOT_KEY:
         # answer False pre_checkout_query
         await query.answer(ok=False, error_message="Something went wrong...")
     else:
@@ -185,10 +145,12 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 # finally, after contacting the payment provider...
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Confirms the successful payment and adds user to Participants"""
-    repository = EventRepository()
     receipt = update.message.successful_payment
-    # print("receipt")
-    # print(receipt)
+    payload = json.loads(receipt.invoice_payload)
+    chat_id = payload["chat_id"]
+    repository = EventRepository(chat_id)
+    print("receipt")
+    print(receipt)
     payload_value_list = [
                 receipt.order_info.name,
                 update.message.chat.username,
@@ -200,7 +162,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
                 receipt.telegram_payment_charge_id
                 ]
     repository.add_participant(payload_value_list)
-    await update.message.reply_text("Thank you for your payment!")
+    await update.message.reply_text("Thank you for signing up for {}")
 
 
 def main() -> None:
@@ -214,16 +176,10 @@ def main() -> None:
     application.add_handler(CommandHandler("chat_id", get_chat_id))
     application.add_handler(CommandHandler("pay", pay_for_event))
     application.add_handler(CommandHandler("sharesheet", share_spreadsheet_with_admin))
+    application.add_handler(CommandHandler("new", new_event))
 
     #how to do unknown text in this version?
     #application.add_handler(MessageHandler(Filters.text, unknown_text))
-
-    # Add command handler to start the payment invoice
-    application.add_handler(CommandHandler("shipping", start_with_shipping_callback))
-    application.add_handler(CommandHandler("noshipping", start_without_shipping_callback))
-
-    # Optional handler if your product requires shipping
-    application.add_handler(ShippingQueryHandler(shipping_callback))
 
     # Pre-checkout handler to final check
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
