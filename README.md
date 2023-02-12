@@ -3,7 +3,21 @@
 This is based on what I read [here](https://medium.com/@tr_18329/build-a-telegram-bot-with-payments-and-a-database-from-a-z-8f54ee1e1ecf)
 But it is using an out of date version so his code doesn't run.
 
-[Gspread docs](https://docs.gspread.org/en/latest/index.html)
+## CURRENT STATUS:
+
+Works locally with test Stripe credentials, is not deployed anywhere.
+If it will be used IRL, add an `iac` directory and deploy in AWS ec2 instance.
+
+To run locally after setup:
+
+`source venv/bin/activate`
+
+`python src/bot.py`
+
+## NOTES
+
+- [Gspread docs](https://docs.gspread.org/en/latest/index.html)
+- [python-telegram-bot docs](https://docs.python-telegram-bot.org/en/stable/index.html)
 
 ## Set Up Your Own Event Payment Bot
 
@@ -47,7 +61,7 @@ From here, `words that looks like this` are commands you are meant to type somew
 - Copy [this google sheet](https://docs.google.com/spreadsheets/d/1F_5xXnd_YYUlAuT_UHWWSSmYiYxvSmJTaN2pSen9cO4/edit?usp=sharing)
 - Change the name of the google sheet from `Telegram Bookings Backend EXAMPLE` to `Telegram Bookings Backend`
   - You can call it something else, but if you do you need to also change the value of `SPREADSHEET_NAME` in `src/settings.py`
-- The only cells you should ever edit in the google sheet are the ones that are light green. The rests needs to stay as it is for the Bot to read/ write from it properly.
+- The only cells you should ever edit in the google sheet are the ones that are light green. The rest needs to stay as it is for the Bot to read/write from it properly.
 
 ### Set up Bot:
 
@@ -55,7 +69,13 @@ From here, `words that looks like this` are commands you are meant to type somew
 
   - While logged in to your account on Telegram, [make a bot](https://medium.com/shibinco/create-a-telegram-bot-using-botfather-and-get-the-api-token-900ba00e0f39)
 
-  - BotFather will give you an API Key. Put that in your .env file under TELEGRAM_BOT_TOKEN
+  - BotFather will give you an API Key. Put that in your `.env` file under `TELEGRAM_BOT_TOKEN`
+
+  - Set up your Stripe Account and put your token in `STRIPE_TOKEN` in `.env`
+
+  - Set yourself as Admin by changing the value of `ADMIN_USERNAME` in `src/settings.py` to your own telegram username.
+
+  - Redeploy app for changes to take effect.
 
   - Create a group chat. Add your bot to it.
 

@@ -21,7 +21,7 @@ class GSheetsClient():
             "https://www.googleapis.com/auth/drive"
             ]
 
-        credentials = ServiceAccountCredentials.from_json_keyfile_name("creds/gs_credentials.json", scope)
+        credentials = ServiceAccountCredentials.from_json_keyfile_name("src/creds/gs_credentials.json", scope)
         return gspread.authorize(credentials)
 
 
