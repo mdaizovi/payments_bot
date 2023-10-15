@@ -1,5 +1,5 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from client_base import ClientBase
 from settings import SPREADSHEET_NAME
 
 # idea from:
@@ -8,23 +8,12 @@ from settings import SPREADSHEET_NAME
 # https://docs.gspread.org/en/latest/user-guide.html#sharing-a-spreadsheet
 
 
-class GSheetsClient():
-
-    def __init__(self):
-        self.client = self._client()
-        self.spreadsheet = None
+class GSheetsClient(ClientBase):
 
     def _client(self):
-        # Connect to Google Sheets
-        scope = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            "https://www.googleapis.com/auth/drive"
-            ]
-
-        credentials = ServiceAccountCredentials.from_json_keyfile_name("src/creds/gs_credentials.json", scope)
+        credentials = self._build_creds()
         return gspread.authorize(credentials)
-
-
+    
     def create_spreadsheet(self, sheet_name):
         return self.client.create(sheet_name)
     
